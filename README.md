@@ -1,34 +1,44 @@
 # Sound Springs
 
-Sound Springs is an audio visualization project built around one principle:
+Sound Springs explores one traceable idea:
 
 > Use real properties of sound to produce a repeatable visual structure whose behavior can be explained.
 
-The eventual goal is to continuously analyze audio and use its measured behavior to drive interactive physical visualizations. A visible movement should be traceable back through a defined force mapping to a specific audio measurement—not to unrelated randomness.
+The current application decodes a WAV or FLAC music file, measures the amplitude near a chosen frequency over time, maps that measured series to force, advances a damped spring, and renders diagnostic plots.
 
 ```text
-audio input
+WAV / FLAC file
     ↓
-decoded PCM samples
+immutable floating-point PCM (frames × channels)
     ↓
-overlapping frames → Hann window → FFT
+overlapping slices → Hann window → one-sided FFT amplitudes
     ↓
-measured audio features
+chosen frequency-bin amplitude (measurement)
     ↓
-defined mapping → physical simulation → rendering
+peak normalization (interpretation)
+    ↓
+damped spring trajectory (behavior)
+    ↓
+diagnostic figure (presentation)
 ```
 
-## Current state
+Synthetic signals remain controlled scientific tools in the tests. They are no longer the application's input source.
 
-The current implementation proves the smallest complete version of that pipeline. It generates a two-second, 440 Hz sine wave; analyzes overlapping frames; finds the magnitude of the FFT bin nearest 440 Hz; normalizes that measurement into a force; and applies the force to a damped spring. A Matplotlib window displays the waveform, a representative spectrum, and the spring response.
+## Current capabilities
 
-The generated tone is a controlled test signal, not the intended input architecture. Because its frequency is known in advance, it provides a check that the analysis reports energy in the expected place. Tests also cover framing and basic spring behavior.
+- WAV and FLAC decoding through `python-soundfile`/libsndfile
+- One stable `AudioBuffer` representation with shape `(frames, channels)`
+- Preservation of all decoded channels without an implicit stereo mixdown
+- Overlapping, complete analysis frames; an incomplete tail is dropped
+- Hann-windowed real FFT with coherent-gain and one-sided amplitude correction
+- Explicit target-bin measurement and measurement-to-force mapping
+- Deterministic semi-implicit Euler simulation of one damped spring
+- Rendering isolated from decoding, DSP, mapping, and simulation
+- Controlled tests for decoding, framing, known tones, silence, mapping, determinism, and spring damping
 
-Sound Springs does **not** yet decode WAV, FLAC, or other audio files, extract richer time-varying features, simulate coupled physical structures, or provide an interactive renderer. Those capabilities are the direction of the project, not features of the current code.
+## Install
 
-## Run it
-
-Sound Springs requires Python 3.11 or newer. Create a virtual environment and install the project with its test dependency:
+Sound Springs requires Python 3.11 or newer.
 
 ```bash
 python -m venv .venv
@@ -36,19 +46,46 @@ source .venv/bin/activate
 python -m pip install -e '.[dev]'
 ```
 
-Run the demonstration:
+## Analyze a music file
+
+Mono input selects its only channel automatically:
 
 ```bash
-python -m sound_springs.demo
+python -m sound_springs.demo path/to/song.wav
 ```
 
-The command prints several analysis facts and opens the diagnostic Matplotlib figure. Run the tests with:
+For stereo or other multichannel input, choose a zero-based channel explicitly. Sound Springs deliberately does not yet impose a project-wide stereo interpretation:
+
+```bash
+python -m sound_springs.demo path/to/song.flac --channel 0
+```
+
+The diagnostic defaults to the FFT bin nearest 440 Hz, 2,048-sample frames, and a 512-sample hop. These can be changed explicitly:
+
+```bash
+python -m sound_springs.demo path/to/song.wav \
+  --frequency 880 \
+  --frame-length 2048 \
+  --hop-length 512
+```
+
+For a non-interactive run or a saved diagnostic:
+
+```bash
+python -m sound_springs.demo path/to/song.wav --no-show
+python -m sound_springs.demo path/to/song.wav --save diagnostic.png --no-show
+```
+
+Run the tests with:
 
 ```bash
 pytest
 ```
 
-## Learn more
+## Project boundaries
 
-- [Architecture](docs/architecture.md) describes the pipeline boundaries, the current implementation, and the near-term direction.
-- [Audio model](docs/audio-model.md) explains the samples, framing, Fourier analysis, force mapping, and spring math behind the demonstration.
+The current target-bin-to-unit-force mapping is intentionally simple. An FFT amplitude is a measurement from the file; using it to push a spring is a Sound Springs model choice. Those responsibilities live in separate modules so the distinction stays inspectable.
+
+This is still an early vertical slice. It does not yet define a stereo mixdown policy, broader musical features, coupled springs, a production renderer, or numerical stability guarantees for arbitrary spring parameters and timesteps.
+
+Read [Architecture](docs/architecture.md), [Audio model](docs/audio-model.md), and [Validation](docs/validation.md) for the implemented boundaries and mathematics.

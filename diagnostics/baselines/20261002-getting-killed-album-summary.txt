@@ -1,0 +1,49 @@
+Sound Springs Getting Killed album baseline
+============================================
+
+Method
+------
+
+Each of the 11 44.1 kHz stereo PCM-16 WAVs was analyzed on channel 0 in a
+fresh WSL/Linux Python process with a 2,048-sample frame and 512-sample hop.
+Fresh processes keep one track's process-lifetime VmHWM from contaminating the
+next. Each track was measured once; filesystem cache and system load were not
+controlled.
+
+Album-level evidence
+--------------------
+
+- Total duration: 45:42.453 (2,742.453 s).
+- Preparation time median / maximum: 1.468 / 2.731 s.
+- Analysis speed median / minimum: 177.6x / 169.9x realtime.
+- Retained precomputed NumPy state range: 0.867-1.851 MiB.
+- Live-state RSS increase median / maximum: 162.367 / 272.844 MiB.
+- Process-lifetime peak RSS median / maximum: 333.535 / 566.727 MiB.
+- Largest decoded float64 PCM array: 268.546 MiB.
+- RSS after release median / range: 39.152 / 33.672-45.086 MiB.
+
+Live-state RSS increase means post-analysis VmRSS minus pre-load VmRSS. Peak RSS
+is the process-lifetime VmHWM, including imports and transient buffers.
+
+Interpretation
+--------------
+
+Full-song preparation is consistently much faster than realtime, and retained
+analysis/timeline state is small. Resident and peak memory are instead dominated
+by decoded float64 stereo PCM. Peak RSS is consistent with the decoder array and
+AudioBuffer's immutable owned copy briefly coexisting, but process RSS cannot
+attribute allocations, so this remains an explanation rather than proof.
+
+The current album evidence does not justify streaming, chunked analysis, lower
+decoding precision, or another DSP/storage redesign. It does justify choosing a
+target-platform resident and peak memory budget. If a real target or longer-file
+test later exceeds that budget, avoiding the transient owned-copy overlap or
+decoding only the selected channel are narrower experiments to evaluate before
+streaming.
+
+Limitations
+-----------
+
+These measurements come from one machine, one run per track, one album encoding,
+one selected channel, and Linux process-level RSS. They are evidence for the
+current architecture, not cross-platform performance guarantees.

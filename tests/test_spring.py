@@ -28,3 +28,21 @@ def test_invalid_mass_and_timestep_are_rejected() -> None:
     spring = Spring()
     with pytest.raises(ValueError, match="dt"):
         spring.update(force=0.0, dt=0.0)
+
+
+def test_damping_removes_mechanical_energy() -> None:
+    undamped = Spring(position=1.0, damping=0.0)
+    damped = Spring(position=1.0, damping=2.0)
+
+    for _ in range(2_000):
+        undamped.update(force=0.0, dt=0.001)
+        damped.update(force=0.0, dt=0.001)
+
+    assert damped.mechanical_energy < undamped.mechanical_energy * 0.05
+
+
+def test_non_finite_parameters_and_force_are_rejected() -> None:
+    with pytest.raises(ValueError, match="damping.*finite"):
+        Spring(damping=float("nan"))
+    with pytest.raises(ValueError, match="force.*finite"):
+        Spring().update(force=float("inf"), dt=0.01)

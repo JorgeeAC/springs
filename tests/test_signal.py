@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from sound_springs.signal import generate_linear_chirp, generate_sine
+from sound_springs.signal import generate_linear_chirp, generate_silence, generate_sine
 from sound_springs.spectrum import analyze_frames, frame_signal
 
 
@@ -27,3 +27,17 @@ def test_signal_generators_reject_aliasing_and_non_finite_inputs() -> None:
 
 def test_zero_duration_chirp_is_empty() -> None:
     assert generate_linear_chirp(100.0, 200.0, 0.0, 8_000).size == 0
+
+
+def test_configurable_sine_amplitude_and_silence_are_deterministic() -> None:
+    first = generate_sine(1_000.0, 0.25, 8_000, amplitude=0.25)
+    second = generate_sine(1_000.0, 0.25, 8_000, amplitude=0.25)
+
+    np.testing.assert_array_equal(first, second)
+    assert np.max(first) == pytest.approx(0.25)
+    np.testing.assert_array_equal(generate_silence(0.25, 8_000), 0.0)
+
+
+def test_sine_rejects_invalid_amplitude() -> None:
+    with pytest.raises(ValueError, match="amplitude"):
+        generate_sine(440.0, 1.0, 8_000, amplitude=-0.1)

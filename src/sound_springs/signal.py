@@ -23,15 +23,25 @@ def generate_sine(
     frequency_hz: float,
     duration_seconds: float,
     sample_rate: int,
+    *,
+    amplitude: float = 1.0,
 ) -> np.ndarray:
     """Generate a sine wave with the requested frequency and duration."""
     _validate_signal_parameters(duration_seconds, sample_rate)
     _validate_frequency(frequency_hz, sample_rate, "frequency_hz")
+    if not isfinite(amplitude) or amplitude < 0:
+        raise ValueError("amplitude must be finite and non-negative")
 
     sample_count = int(duration_seconds * sample_rate)
     time = np.arange(sample_count) / sample_rate
-    signal = np.sin(2 * np.pi * frequency_hz * time)
+    signal = amplitude * np.sin(2 * np.pi * frequency_hz * time)
     return signal
+
+
+def generate_silence(duration_seconds: float, sample_rate: int) -> np.ndarray:
+    """Generate deterministic silence with the requested sample count."""
+    _validate_signal_parameters(duration_seconds, sample_rate)
+    return np.zeros(int(duration_seconds * sample_rate), dtype=np.float64)
 
 
 def generate_linear_chirp(

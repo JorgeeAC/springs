@@ -17,21 +17,45 @@ def test_strongest_frequency_is_near_generated_frequency() -> None:
     assert abs(strongest_frequency - 440.0) <= frequency_resolution
 
 
-def test_bin_centered_sine_reports_its_amplitude() -> None:
+@pytest.mark.parametrize("frame_length", [512, 1_024, 2_048])
+def test_bin_centered_sine_reports_its_amplitude_across_frame_lengths(
+    frame_length: int,
+) -> None:
     sample_rate = 8_192
-    frame_length = 1_024
     expected_amplitude = 0.4
     signal = expected_amplitude * generate_sine(
-        1_000.0,
+        1_024.0,
         frame_length / sample_rate,
         sample_rate,
     )
 
     frequencies, amplitudes = analyze_frame(signal, sample_rate)
-    target_bin = int(np.argmin(np.abs(frequencies - 1_000.0)))
+    target_bin = int(np.argmin(np.abs(frequencies - 1_024.0)))
 
-    assert frequencies[target_bin] == pytest.approx(1_000.0)
+    assert frequencies[target_bin] == pytest.approx(1_024.0)
     assert amplitudes[target_bin] == pytest.approx(expected_amplitude, rel=2e-6)
+
+
+def test_dc_and_nyquist_are_not_incorrectly_doubled() -> None:
+    sample_rate = 8_192
+    frame_length = 1_024
+    dc_amplitude = 0.3
+    nyquist_amplitude = 0.4
+
+    dc_frequencies, dc_spectrum = analyze_frame(
+        np.full(frame_length, dc_amplitude),
+        sample_rate,
+    )
+    nyquist_signal = nyquist_amplitude * (-1.0) ** np.arange(frame_length)
+    nyquist_frequencies, nyquist_spectrum = analyze_frame(
+        nyquist_signal,
+        sample_rate,
+    )
+
+    assert dc_frequencies[0] == 0.0
+    assert dc_spectrum[0] == pytest.approx(dc_amplitude)
+    assert nyquist_frequencies[-1] == sample_rate / 2
+    assert nyquist_spectrum[-1] == pytest.approx(nyquist_amplitude)
 
 
 def test_two_tone_signal_has_both_expected_amplitudes() -> None:
@@ -82,5 +106,7 @@ def test_analysis_rejects_invalid_or_non_finite_frames() -> None:
         analyze_frame(np.zeros(2), 44_100)
     with pytest.raises(ValueError, match="finite"):
         analyze_frame(np.array([0.0, np.inf, 0.0]), 44_100)
+    with pytest.raises(ValueError, match="real-valued"):
+        analyze_frame(np.ones(4, dtype=np.complex128), 44_100)
     with pytest.raises(ValueError, match="at least one"):
         analyze_frames(np.empty((0, 1_024)), 44_100)

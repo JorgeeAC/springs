@@ -14,6 +14,15 @@ def test_silence_maps_to_zero_force() -> None:
     np.testing.assert_array_equal(peak_normalized_forces(np.zeros(4)), 0.0)
 
 
+def test_peak_normalization_intentionally_removes_absolute_amplitude_scale() -> None:
+    envelope = np.array([0.25, 0.5, 1.0])
+
+    quiet_forces = peak_normalized_forces(0.25 * envelope)
+    loud_forces = peak_normalized_forces(envelope)
+
+    np.testing.assert_allclose(quiet_forces, loud_forces)
+
+
 @pytest.mark.parametrize(
     "measurements, error",
     [

@@ -5,6 +5,8 @@ import pytest
 import soundfile as sf
 
 from sound_springs.audio import AudioBuffer, AudioDecodeError, load_audio_file
+from sound_springs.signal import generate_sine
+from sound_springs.spectrum import analyze_frame
 
 
 @pytest.mark.parametrize("extension, format_name", [("wav", "WAV"), ("flac", "FLAC")])
@@ -30,6 +32,39 @@ def test_load_audio_file_preserves_rate_channels_and_pcm(
     assert audio.channel_count == 2
     assert audio.duration_seconds == pytest.approx(len(expected) / sample_rate)
     np.testing.assert_allclose(audio.samples, expected, atol=1 / 2**15)
+
+
+@pytest.mark.parametrize("extension, format_name", [("wav", "WAV"), ("flac", "FLAC")])
+def test_known_tone_survives_file_round_trip_and_analysis(
+    tmp_path: Path,
+    extension: str,
+    format_name: str,
+) -> None:
+    sample_rate = 8_192
+    frame_length = 1_024
+    expected_frequency = 440.0
+    expected_amplitude = 0.6
+    signal = generate_sine(
+        expected_frequency,
+        frame_length / sample_rate,
+        sample_rate,
+        amplitude=expected_amplitude,
+    )
+    path = tmp_path / f"known-tone.{extension}"
+    sf.write(path, signal, sample_rate, format=format_name, subtype="PCM_16")
+
+    decoded = load_audio_file(path)
+    decoded_again = load_audio_file(path)
+    frequencies, amplitudes = analyze_frame(decoded.channel(0), decoded.sample_rate)
+    strongest_bin = int(np.argmax(amplitudes))
+
+    assert decoded.sample_rate == sample_rate
+    np.testing.assert_array_equal(decoded_again.samples, decoded.samples)
+    assert frequencies[strongest_bin] == pytest.approx(expected_frequency)
+    assert amplitudes[strongest_bin] == pytest.approx(
+        expected_amplitude,
+        abs=2 / 2**15,
+    )
 
 
 def test_mono_file_keeps_an_explicit_channel_dimension(tmp_path: Path) -> None:

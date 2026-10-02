@@ -1,6 +1,68 @@
 """Explicit framing and Fourier-transform calculations."""
 
+from numbers import Integral
+
 import numpy as np
+
+
+def _validate_frame(frame: np.ndarray) -> None:
+    if frame.ndim != 1:
+        raise ValueError("frame must be one-dimensional")
+    if len(frame) < 3:
+        raise ValueError("frame must contain at least 3 samples")
+    if not np.issubdtype(frame.dtype, np.number) or np.issubdtype(
+        frame.dtype, np.complexfloating
+    ):
+        raise ValueError("frame must be real-valued numeric data")
+    if not np.all(np.isfinite(frame)):
+        raise ValueError("frame must contain only finite values")
+
+
+def apply_hann_window(frame: np.ndarray) -> np.ndarray:
+    """Return a frame tapered by the symmetric Hann window used in analysis."""
+    frame = np.asarray(frame)
+    _validate_frame(frame)
+    return frame * np.hanning(len(frame))
+
+
+def energy_from_rfft(spectrum: np.ndarray, frame_length: int) -> float:
+    """Reconstruct time-domain energy from an unnormalized real FFT.
+
+    NumPy's default forward transform is unnormalized. Interior ``rfft`` bins
+    represent positive- and negative-frequency partners, so their squared
+    magnitudes contribute twice; DC and an even-length Nyquist bin contribute
+    once. Dividing the weighted sum by ``frame_length`` applies Parseval's
+    normalization.
+    """
+    if (
+        isinstance(frame_length, bool)
+        or not isinstance(frame_length, Integral)
+        or frame_length < 1
+    ):
+        raise ValueError("frame_length must be a positive integer")
+    values = np.asarray(spectrum)
+    expected_bin_count = frame_length // 2 + 1
+    if values.ndim != 1 or len(values) != expected_bin_count:
+        raise ValueError(
+            "spectrum length must match an rfft of frame_length "
+            f"({expected_bin_count} bins)"
+        )
+    if not np.issubdtype(values.dtype, np.number):
+        raise ValueError("spectrum must be numeric")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("spectrum must contain only finite values")
+
+    squared_magnitudes = np.abs(values) ** 2
+    if frame_length % 2 == 0:
+        mirrored_energy = 2 * np.sum(squared_magnitudes[1:-1])
+    else:
+        mirrored_energy = 2 * np.sum(squared_magnitudes[1:])
+    endpoint_energy = (
+        squared_magnitudes[-1] if frame_length % 2 == 0 else 0.0
+    )
+    return float(
+        (squared_magnitudes[0] + mirrored_energy + endpoint_energy) / frame_length
+    )
 
 
 def frame_signal(
@@ -35,16 +97,10 @@ def analyze_frame(frame: np.ndarray, sample_rate: int) -> tuple[np.ndarray, np.n
     bins are doubled because ``rfft`` omits their negative-frequency mirrors;
     DC and the even-length Nyquist bin are not doubled.
     """
-    if frame.ndim != 1:
-        raise ValueError("frame must be one-dimensional")
-    if len(frame) < 3:
-        raise ValueError("frame must contain at least 3 samples")
+    frame = np.asarray(frame)
+    _validate_frame(frame)
     if sample_rate <= 0:
         raise ValueError("sample_rate must be positive")
-    if not np.issubdtype(frame.dtype, np.number):
-        raise ValueError("frame must be numeric")
-    if not np.all(np.isfinite(frame)):
-        raise ValueError("frame must contain only finite values")
 
     # Taper the frame so its endpoints meet smoothly before the FFT.
     window = np.hanning(len(frame))

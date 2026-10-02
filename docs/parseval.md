@@ -194,11 +194,14 @@ all divided by the appropriate FFT normalization.
 
 ---
 
-# Recommended First Implementation
+# Implemented Validation
 
-Do NOT modify production DSP simply to make Parseval testing easier.
+Sound Springs validates Parseval in two forms:
 
-Instead, create a validation test using:
+- a full FFT, kept as the simplest mathematical reference;
+- the one-sided `rfft` representation used by production analysis.
+
+The full-FFT reference intentionally remains direct:
 
     np.fft.fft(...)
 
@@ -223,13 +226,13 @@ This keeps the first test extremely easy to reason about:
         ...
     )
 
-Once that invariant is understood, we can add a second test validating the one-sided `rfft` representation.
+`energy_from_rfft` performs the second calculation. It counts DC once, counts the even-length Nyquist bin once, and doubles bins with omitted negative-frequency partners. Tests cover odd and even frame lengths. They use `rel=1e-12` and `abs=1e-12`, allowing normal floating-point FFT reduction differences while remaining tight enough to detect a missing one-sided factor or normalization.
 
 ---
 
-# Proposed Tests
+# Validation Cases
 
-## SS Parseval Test 1 — Known Sine
+## SS Parseval Test 1 — Known Sine (implemented)
 
 Generate:
 
@@ -246,7 +249,7 @@ using the full FFT.
 
 ---
 
-## SS Parseval Test 2 — Different Amplitudes
+## SS Parseval Test 2 — Different Amplitudes (implemented)
 
 Generate identical sine waves with:
 
@@ -272,7 +275,7 @@ This gives us another useful signal-processing sanity check.
 
 ---
 
-## SS Parseval Test 3 — Two Tones
+## SS Parseval Test 3 — Two Tones (implemented)
 
 Generate:
 
@@ -286,7 +289,7 @@ This demonstrates that Parseval is not specific to a single sine wave.
 
 ---
 
-## SS Parseval Test 4 — Arbitrary Deterministic Signal
+## SS Parseval Test 4 — Arbitrary Deterministic Signal (implemented)
 
 Create a deterministic pseudo-random signal using an explicit random seed.
 
@@ -298,9 +301,9 @@ This prevents us from accidentally writing a test that only works because sine w
 
 ---
 
-## SS Parseval Test 5 — Production rfft
+## SS Parseval Test 5 — Production rfft (implemented)
 
-Once the full-FFT implementation is understood, implement the corresponding energy calculation for:
+The corresponding energy calculation uses:
 
     np.fft.rfft(...)
 
@@ -359,9 +362,9 @@ We want both.
 
 ---
 
-# Integration Plan
+# Validation Layers
 
-Sound Springs should eventually maintain multiple layers of validation.
+Sound Springs now maintains multiple complementary layers of validation.
 
 ## Signal Ground Truth
 
@@ -412,6 +415,4 @@ Together these form a much stronger validation system than simply looking at a g
 
 # Current Status
 
-Parseval validation is planned but should be considered part of the scientific validation work before Sound Springs begins relying heavily on more complex visual mappings.
-
-The first implementation should remain small and transparent.
+Parseval validation is implemented in `tests/test_spectrum_energy.py` for full FFT and one-sided `rfft` representations. `energy_from_rfft` is deliberately small and transparent, and no claim is made that Parseval validates the later interpretation, simulation, or visual mapping stages.

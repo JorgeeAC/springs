@@ -55,6 +55,10 @@ The current major project phases are:
 
 We should resist skipping Phase 1 just because Phase 3 is more fun.
 
+Current milestone state: the scoped Phase 1 contracts and lightweight Phase 2
+timeline are complete. The album benchmark validates the current precompute
+path well enough to begin Phase 3; playback and interactive rendering are next.
+
 ---
 
 # Scientific Validation
@@ -65,7 +69,7 @@ Priority: P0
 
 Status:
 
-    [ ]
+    [x]
 
 Define exactly what deterministic means for each layer.
 
@@ -102,7 +106,7 @@ Priority: P0
 
 Status:
 
-    [ ]
+    [x]
 
 Establish reusable synthetic signals for scientific validation.
 
@@ -128,7 +132,7 @@ Priority: P0
 
 Status:
 
-    [ ]
+    [x]
 
 Implement validation based on Parseval's theorem.
 
@@ -156,13 +160,13 @@ Priority: P0
 
 Status:
 
-    [ ]
+    [x]
 
 Answer:
 
 > What exactly does the Y-axis of our spectrum mean?
 
-Current raw FFT magnitude may depend on:
+The original raw FFT magnitude depended on:
 
 - frame length
 - Hann-window coherent gain
@@ -178,6 +182,8 @@ Research and document:
 
 DO NOT silently change production scaling before understanding the consequences.
 
+Implemented result: production values are documented coherent-gain-corrected one-sided amplitudes. Interior bins are doubled; DC and even-length Nyquist are not. Tests cover amplitude scaling, endpoint bins, and multiple frame lengths.
+
 Acceptance criteria:
 
 - documentation clearly defines current values
@@ -192,7 +198,7 @@ Priority: P0
 
 Status:
 
-    [ ]
+    [x]
 
 Generate a known synthetic signal.
 
@@ -225,7 +231,7 @@ Priority: P1
 
 Status:
 
-    [ ]
+    [x]
 
 If FLAC is supported by the selected decoder, repeat the known-signal round-trip test using FLAC.
 
@@ -243,7 +249,7 @@ Priority: P0
 
 Status:
 
-    [ ]
+    [x]
 
 Silence should produce:
 
@@ -265,7 +271,7 @@ Priority: P0
 
 Status:
 
-    [ ]
+    [x]
 
 Generate otherwise-identical sine waves at:
 
@@ -294,9 +300,9 @@ Priority: P1
 
 Status:
 
-    [ ]
+    [x]
 
-The current static visualization displays a "representative frame."
+The earlier static visualization displayed an unidentified "representative frame."
 
 Make the selected frame explicit.
 
@@ -325,7 +331,7 @@ Priority: P2
 
 Status:
 
-    [ ]
+    [x]
 
 The first 20 ms of some real music files may contain digital silence.
 
@@ -337,7 +343,7 @@ Possible options:
 - select waveform region corresponding to representative FFT frame
 - show first non-silent region
 
-Human decision may be needed on the desired debugging UX.
+Implemented choice: display the waveform of the exact representative FFT frame. Both diagnostic panels name the same frame index and sample range, avoiding an unrelated silent file prefix without introducing a product visualization decision.
 
 ---
 
@@ -349,7 +355,7 @@ Priority: P1
 
 Status:
 
-    [ ]
+    [x]
 
 Interactive playback will require a deterministic relationship between:
 
@@ -380,7 +386,7 @@ Priority: P1
 
 Status:
 
-    [ ]
+    [x]
 
 Given:
 
@@ -400,7 +406,7 @@ Conceptually:
     feature_index =
         sample_position / hop_length
 
-Consider interpolation between adjacent feature frames later.
+The implemented lookup accepts source sample position or playback time, selects the nearest frame center, chooses the earlier frame on an exact tie, clamps valid source-edge positions to the nearest available complete frame, and rejects positions outside the source duration. Interpolation remains a possible later experiment rather than an implicit current behavior.
 
 Initial implementation can remain simple.
 
@@ -479,7 +485,7 @@ Priority: P1
 
 Status:
 
-    [ ]
+    [x]
 
 For normal local music files:
 
@@ -496,6 +502,8 @@ Avoid calculating expensive DSP inside the 60 FPS render loop unless later measu
 Goal:
 
     render loop does minimal work
+
+The current file pipeline completes all target-bin measurements, mapping, and simulation before diagnostic rendering and stores the immutable analysis timeline in memory. Future playback work should consume this result rather than repeat FFT work in the render loop.
 
 ---
 
@@ -689,7 +697,7 @@ Priority: P1
 
 Status:
 
-    [ ]
+    [~]
 
 Before aggressively optimizing, measure:
 
@@ -702,6 +710,17 @@ Before aggressively optimizing, measure:
 Test with a normal several-minute music file.
 
 We want the frontend/render loop to remain lightweight.
+
+The decode/precompute portion now has a reusable single-file CSV/TXT runner and
+an 11-track, 45:42 album baseline, with each track run in a fresh process.
+Analysis was 169.9x-183.3x realtime. Median/max live-state RSS increase was
+162.367/272.844 MiB; median/max process peak was 333.535/566.727 MiB; retained
+precomputed arrays never exceeded 1.851 MiB. All tracks completed and
+post-release RSS was 33.672-45.086 MiB. Render FPS, worst-frame time, and CPU
+usage remain open, so SS-300 is intentionally still in progress. See
+docs/diagnostics.md. Those renderer-dependent measurements should be collected
+with the Phase 3 renderer spike; they do not block starting interactive runtime
+work. Current evidence does not justify streaming or another memory redesign.
 
 ---
 
@@ -739,7 +758,7 @@ Priority: P1
 
 Status:
 
-    [ ]
+    [x]
 
 Jon and other contributors should update this file when completing meaningful work.
 
@@ -785,27 +804,11 @@ Do not migrate merely because formal issue tracking looks more professional.
 
 The current recommended sequence is:
 
-    SS-001 Determinism contract
-        ↓
-    SS-002 Ground-truth signals
-        ↓
-    SS-003 Parseval
-        ↓
-    SS-004 Spectrum semantics
-        ↓
-    SS-005 WAV round trip
-        ↓
-    SS-007 Silence invariant
-        ↓
-    SS-008 Amplitude validation
-        ↓
-    SS-030 Feature timeline
+    SS-101 Playback clock
         ↓
     SS-100 Renderer spike
         ↓
-    SS-101 Playback clock
-        ↓
-    SS-102 Precomputed analysis
+    SS-300 Finish renderer FPS / frame-time / CPU baseline
         ↓
     SS-103 60 FPS loop
         ↓

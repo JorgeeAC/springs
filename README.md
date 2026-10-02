@@ -30,11 +30,14 @@ Synthetic signals remain controlled scientific tools in the tests. They are no l
 - One stable `AudioBuffer` representation with shape `(frames, channels)`
 - Preservation of all decoded channels without an implicit stereo mixdown
 - Overlapping, complete analysis frames; an incomplete tail is dropped
+- Immutable frame identities with exact sample ranges and center timestamps
 - Hann-windowed real FFT with coherent-gain and one-sided amplitude correction
 - Explicit target-bin measurement and measurement-to-force mapping
+- Deterministic nearest-frame measurement lookup by playback position
 - Deterministic semi-implicit Euler simulation of one damped spring
 - Rendering isolated from decoding, DSP, mapping, and simulation
-- Controlled tests for decoding, framing, known tones, silence, mapping, determinism, and spring damping
+- Centralized one-run CSV/TXT timing and process-memory diagnostics
+- Controlled tests for decoding, framing, Parseval energy, amplitude scaling, known tones, silence, timeline lookup, determinism, and spring damping
 
 ## Install
 
@@ -76,6 +79,16 @@ python -m sound_springs.demo path/to/song.wav --no-show
 python -m sound_springs.demo path/to/song.wav --save diagnostic.png --no-show
 ```
 
+To benchmark one file through decoding and the precomputed pipeline without
+rendering, write one CSV record and one TXT summary:
+
+    python -m sound_springs.benchmark path/to/song.wav --channel 0
+
+The routine artifacts go to the Git-ignored diagnostics/runs/ directory by
+default. The reviewed album-level evidence is retained separately under
+diagnostics/baselines/. See [Runtime diagnostics](docs/diagnostics.md) for the
+schema, artifact policy, and memory semantics.
+
 Run the tests with:
 
 ```bash
@@ -88,4 +101,7 @@ The current target-bin-to-unit-force mapping is intentionally simple. An FFT amp
 
 This is still an early vertical slice. It does not yet define a stereo mixdown policy, broader musical features, coupled springs, a production renderer, or numerical stability guarantees for arbitrary spring parameters and timesteps.
 
-Read [Architecture](docs/architecture.md), [Audio model](docs/audio-model.md), and [Validation](docs/validation.md) for the implemented boundaries and mathematics.
+Read [Architecture](docs/architecture.md), [Audio model](docs/audio-model.md),
+[Validation](docs/validation.md), and
+[Runtime diagnostics](docs/diagnostics.md) for the implemented boundaries,
+mathematics, and measurement methodology.

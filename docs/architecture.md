@@ -74,25 +74,48 @@ m*x'' + c*x' + k(x - x0) = F
 
 with semi-implicit Euler integration. Physical parameters, force, and timestep must be finite; mass and timestep must be positive; stiffness and damping must be non-negative. `mechanical_energy` exposes kinetic plus spring potential energy for validation.
 
-`pipeline.py` orchestrates the current vertical slice. `AnalysisSettings` records the frame length, hop length, and target frequency. `PipelineResult` contains read-only frequencies, amplitudes, forces, and positions for deterministic downstream consumption.
+`timeline.py` gives every complete frame a stable zero-based index, source range `[start_sample, end_sample)`, center sample coordinate, and center timestamp. The center sample is `start + (N - 1) / 2`, the midpoint of the first and last sample positions. Deterministic lookup by playback sample or time selects the nearest frame center, chooses the earlier frame on an exact tie, and selects the nearest end frame for valid source positions outside the analyzed centers.
+
+`pipeline.py` orchestrates the current vertical slice. `AnalysisSettings` records the frame length, hop length, and target frequency. `PipelineResult` contains the immutable `AnalysisTimeline` plus read-only frequencies, amplitudes, forces, and positions. `measurement_at_time` returns a target-bin measurement together with its exact frame identity; it does not mix mapped force or simulation state into the measurement record.
 
 The pipeline does not decode files and does not render.
+
+## Runtime observation: diagnostics.py and benchmark.py
+
+DiagnosticRun is one scalar record and two output serializers, not a logging or
+telemetry framework. The single-file benchmark owns file metadata, process
+memory snapshots, and final CSV/TXT output. The pipeline can optionally report
+elapsed time for timeline construction, frame analysis, and mapping/simulation
+into that record; it never knows where or whether the record is written. DSP
+functions remain unaware of diagnostics.
+
+This keeps the normal causal path unchanged while making a complete preparation
+run observable:
+
+    decode and pipeline phase measurements
+        → one DiagnosticRun
+        → one CSV row + one TXT summary
+
+The CSV schema, phase boundaries, RSS semantics, first real-WAV baseline, and
+limitations are documented in [Runtime diagnostics](diagnostics.md).
 
 ## Presentation: `render.py` and `demo.py`
 
 `create_diagnostic_figure` receives a signal and an already-calculated `PipelineResult`. It plots:
 
-- the first 20 ms of the selected input channel;
-- one representative amplitude spectrum;
+- the waveform samples of the same representative frame;
+- one representative amplitude spectrum labeled with its frame index, exact sample range, and center time;
 - the simulated spring position over time.
 
 It performs no FFT, feature mapping, or simulation.
+
+Measurement center times and simulation-state times are deliberately separate. A measured frame is located at its center; spring position `i` is the state after force `i` advances the integrator by one hop duration, so its time is `(i + 1) * hop_length / sample_rate` rather than zero.
 
 `demo.py` is the thin application boundary: parse options, load a file, resolve an explicit channel, run the pipeline, print measured facts, and ask the renderer for a figure. It can show or save that figure.
 
 ## Deterministic contract
 
-Within one numerical environment, the same selected PCM channel, sample rate, settings, mapping, spring parameters, and initial state produce the same numerical series. Tests compare repeated amplitudes, forces, and positions exactly. Cross-platform pixel identity is not a contract; rendering is downstream of the deterministic values.
+Within one numerical environment, the same selected PCM channel, sample rate, settings, mapping, spring parameters, and initial state produce the same frame identities and numerical series. Tests compare repeated amplitudes, forces, and positions exactly. Cross-platform mathematical checks use documented floating-point tolerances; decoded PCM uses a bit-depth-derived absolute tolerance. Cross-platform pixel identity is not a contract because rendering is downstream of the deterministic values.
 
 ## Current limitations
 

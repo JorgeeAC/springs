@@ -6,26 +6,13 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from sound_springs.audio import AudioBuffer, AudioDecodeError, load_audio_file
+from sound_springs.audio import (
+    AudioDecodeError,
+    load_audio_file,
+    select_analysis_channel,
+)
 from sound_springs.pipeline import AnalysisSettings, run_pipeline
 from sound_springs.render import create_diagnostic_figure
-
-
-def select_analysis_channel(audio: AudioBuffer, requested_channel: int | None) -> int:
-    """Resolve a channel without silently defining a stereo mixdown policy."""
-    if requested_channel is None:
-        if audio.channel_count == 1:
-            return 0
-        raise ValueError(
-            f"input has {audio.channel_count} channels; choose one explicitly "
-            "with --channel (zero-based)"
-        )
-    if not 0 <= requested_channel < audio.channel_count:
-        raise ValueError(
-            f"channel {requested_channel} is out of range for "
-            f"{audio.channel_count} channel(s)"
-        )
-    return requested_channel
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -81,6 +68,15 @@ def main(arguments: Sequence[str] | None = None) -> None:
     print(f"Decoded frames: {audio.frame_count}")
     print(f"Channels: {audio.channel_count}; analyzed channel: {channel_index}")
     print(f"Analysis frames: {len(result.target_amplitudes)}")
+    representative_index = result.representative_frame_index
+    representative_start = result.timeline.start_samples[representative_index]
+    representative_end = result.timeline.end_samples_exclusive[representative_index]
+    representative_center = result.timeline.center_times_seconds[representative_index]
+    print(
+        f"Representative frame: {representative_index}; "
+        f"samples [{representative_start}, {representative_end}); "
+        f"center {representative_center:.6f} s"
+    )
     print(
         f"FFT bin nearest {settings.target_frequency_hz:g} Hz: "
         f"{result.target_bin_index} ({result.measured_frequency_hz:.2f} Hz)"

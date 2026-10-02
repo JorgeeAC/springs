@@ -80,6 +80,25 @@ class AudioBuffer:
         return self.samples[:, index]
 
 
+def select_analysis_channel(
+    audio: AudioBuffer, requested_channel: int | None
+) -> int:
+    """Resolve a channel without silently defining a stereo mixdown policy."""
+    if requested_channel is None:
+        if audio.channel_count == 1:
+            return 0
+        raise ValueError(
+            f"input has {audio.channel_count} channels; choose one explicitly "
+            "with --channel (zero-based)"
+        )
+    if not 0 <= requested_channel < audio.channel_count:
+        raise ValueError(
+            f"channel {requested_channel} is out of range for "
+            f"{audio.channel_count} channel(s)"
+        )
+    return requested_channel
+
+
 def load_audio_file(path: str | Path) -> AudioBuffer:
     """Decode a WAV or FLAC file as float64 PCM sample frames.
 

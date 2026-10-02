@@ -31,6 +31,15 @@ Only frames with all \(N\) samples are included. The incomplete tail is dropped.
 
 Because the hop is smaller than the frame, adjacent frames overlap. The application processes slices incrementally rather than allocating a full overlapping frame matrix.
 
+Each complete frame has an immutable identity:
+
+- zero-based frame index `i`;
+- start sample `iH`;
+- exclusive end sample `iH + N`;
+- center time `(iH + (N - 1) / 2) / sample_rate`.
+
+Using `(N - 1) / 2` locates the midpoint of the actual first and last samples. For an even-length symmetric Hann window, that center lies halfway between two samples. Playback lookup accepts either a source sample position or time in seconds and selects the nearest frame center, with the earlier frame winning an exact tie. Valid positions before the first center or after the last center select the closest available complete frame; positions outside the decoded source duration are rejected.
+
 ## Hann window
 
 The DFT treats a finite frame as one period of a repeating signal. A discontinuity between its end and beginning spreads energy across bins. Sound Springs applies NumPy's symmetric Hann window:
@@ -66,6 +75,18 @@ A[k] = \frac{|X[k]|}{\sum_n w[n]}.
 Interior bins are then multiplied by two to account for their omitted negative-frequency mirrors. DC is not doubled, and for even frame lengths the Nyquist bin is not doubled. A bin-centered 0.4-amplitude sine is therefore measured at approximately 0.4 regardless of the supported frame length. For off-bin tones, energy is distributed across nearby bins and a single-bin peak can be lower than the sinusoid amplitude.
 
 The analysis currently discards phase.
+
+## Energy and Parseval validation
+
+Spectrum amplitude and signal energy are related but are not the same quantity. For a windowed frame \(x_w[n]\), NumPy's unnormalized transform obeys
+
+\[
+\sum_n |x_w[n]|^2 = \frac{1}{N}\sum_k |X[k]|^2.
+\]
+
+For `rfft`, DC and the even-length Nyquist bin contribute once while all interior bins contribute twice to account for their omitted negative-frequency partners. `energy_from_rfft` implements that reconstruction for both odd and even frame lengths. Tests compare it to the energy of the exact Hann-windowed production input. This validates energy preservation independently of the coherent-gain amplitude estimate.
+
+Scaling a signal amplitude by \(a\) scales its measured spectrum amplitude by \(a\), spectral power by \(a^2\), and signal energy by \(a^2\). Tests cover amplitudes 0.25, 0.5, and 1.0 on a bin-centered tone.
 
 ## Measurement versus interpretation
 
@@ -108,6 +129,8 @@ E = \frac{1}{2}m\dot{x}^2 + \frac{1}{2}k(x-x_0)^2.
 \]
 
 Tests verify that behavior for the current numerical regime. The implementation does not yet promise stability for arbitrary parameter/timestep combinations.
+
+The measurement timestamp and simulation timestamp are not interchangeable. Frame `i` is measured at its center time. Recorded spring position `i` is the state after applying its force for one integration step and therefore occurs at `(i + 1) * hop_length / sample_rate` relative to the simulation start.
 
 ## Traceability and determinism
 

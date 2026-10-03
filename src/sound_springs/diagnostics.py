@@ -49,7 +49,24 @@ CSV_COLUMNS = (
     "timeline_array_mib",
     "precomputed_state_bytes",
     "precomputed_state_mib",
+    "interactive_runtime_s",
+    "playback_position_end_s",
+    "target_render_fps",
+    "render_frame_count",
+    "render_fps_average",
+    "render_frame_ms_median",
+    "render_frame_ms_worst",
+    "late_frame_count",
+    "analysis_frame_offset_ms_mean_abs",
+    "analysis_frame_offset_ms_max_abs",
+    "runtime_cpu_percent",
     "memory_before_load_rss_mib",
+    "audio_driver",
+    "audio_buffer_samples",
+    "audio_buffer_ms",
+    "mixer_frequency_hz",
+    "mixer_sample_size_bits",
+    "mixer_channel_count",
     "memory_after_decode_rss_mib",
     "memory_after_analysis_rss_mib",
     "memory_end_rss_mib",
@@ -167,6 +184,33 @@ class DiagnosticRun:
             "post-analysis snapshot. This single process run is not an "
             "album-wide or cross-platform performance bound."
         )
+        runtime_section = ""
+        if row["interactive_runtime_s"] is not None:
+            interpretation = (
+                f"Analysis completed at {realtime}x realtime. Interactive "
+                "timing is evidence from this run, not an audio-device, "
+                "compositor, or cross-platform performance guarantee."
+            )
+            runtime_section = (
+                "Interactive runtime:\n"
+                f"  Wall time: {number('interactive_runtime_s')} s\n"
+                f"  Playback position at exit: "
+                f"{number('playback_position_end_s')} s\n"
+                f"  Average FPS: {number('render_fps_average', 1)}\n"
+                f"  Median / worst frame: {number('render_frame_ms_median')} / "
+                f"{number('render_frame_ms_worst')} ms\n"
+                f"  Late frames: {row['late_frame_count']}\n"
+                f"  Mean / max absolute analysis-frame offset: "
+                f"{number('analysis_frame_offset_ms_mean_abs')} / "
+                f"{number('analysis_frame_offset_ms_max_abs')} ms\n"
+                f"  Process CPU: {number('runtime_cpu_percent', 1)}%\n"
+                f"  Audio backend: {row['audio_driver'] or 'not available'}; "
+                f"{row['mixer_frequency_hz'] or 'not available'} Hz; "
+                f"{row['mixer_sample_size_bits'] or 'not available'}-bit; "
+                f"{row['mixer_channel_count'] or 'not available'} channel(s)\n"
+                f"  Audio buffer: {number('audio_buffer_samples', 0)} samples / "
+                f"{number('audio_buffer_ms', 1)} ms\n\n"
+            )
 
         return (
             "Sound Springs diagnostic run\n"
@@ -194,7 +238,8 @@ class DiagnosticRun:
             f"{number('total_prepare_rss_delta_mib')} MiB\n"
             f"  Peak process RSS: {peak} MiB\n"
             f"  End RSS after release: {number('memory_end_rss_mib')} MiB\n\n"
-            "Interpretation:\n"
+            + runtime_section
+            + "Interpretation:\n"
             f"  {interpretation}\n\n"
             "Memory note:\n"
             "  RSS is process-level resident memory, not Python object size. "

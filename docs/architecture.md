@@ -13,7 +13,7 @@ spring forces
     ↓ behavior
 simulation state
     ↓ presentation
-diagnostic rendering
+diagnostic or interactive rendering
 ```
 
 These are small module boundaries for current requirements, not framework layers for hypothetical inputs or renderers.
@@ -80,7 +80,7 @@ with semi-implicit Euler integration. Physical parameters, force, and timestep m
 
 The pipeline does not decode files and does not render.
 
-## Runtime observation: diagnostics.py and benchmark.py
+## Runtime observation: `diagnostics.py`, `benchmark.py`, and `interactive.py`
 
 DiagnosticRun is one scalar record and two output serializers, not a logging or
 telemetry framework. The single-file benchmark owns file metadata, process
@@ -96,8 +96,59 @@ run observable:
         → one DiagnosticRun
         → one CSV row + one TXT summary
 
-The CSV schema, phase boundaries, RSS semantics, first real-WAV baseline, and
+The interactive command adds render-loop scalars to the same record. The CSV
+schema, phase boundaries, RSS semantics, first real-WAV baseline, and
 limitations are documented in [Runtime diagnostics](diagnostics.md).
+
+## Interactive runtime: `playback.py`, `runtime.py`, and `interactive.py`
+
+`playback.py` owns audio output and the authoritative playback position.
+`AudioOutputSettings` makes source rate, output channel count, and a
+power-of-two mixer buffer explicit. `initialize_audio_output` requests the
+source sample rate, signed 16-bit output, mono/stereo channel count, no silent
+format changes, and returns the negotiated SDL driver/format for diagnostics.
+The 4,096-sample default is 92.9 ms at 44.1 kHz; it replaces the original
+hard-coded 512-sample/11.6 ms request, which was unnecessarily fragile for the
+WSLg PulseAudio/RDP boundary.
+
+`MusicPlayback` wraps pygame-ce's single streamed music channel. It starts at
+the beginning and exposes SDL_mixer's elapsed playback milliseconds as the
+source position. The original WAV is streamed directly by SDL_mixer; the
+float64 array decoded for analysis never enters or modifies the playback path.
+The module owns no PCM analysis and performs no DSP. Pause/resume is supported.
+Seeking is deliberately absent because SDL_mixer does not consistently support
+positioning WAV streams and `get_pos()` does not include a start offset.
+
+`runtime.PlaybackSynchronizedSpring` keeps four clocks distinct:
+
+```text
+audio playback position
+    ↓ nearest deterministic lookup
+analysis frame center and precomputed force
+    ↓ one update per newly reached analysis frame
+fixed simulation timestep = hop length / sample rate
+    ↓ independent presentation
+render loop capped near 60 FPS
+```
+
+If rendering skips analysis frames, the runtime applies every intervening force
+once. If a future playback clock moves backward, it resets and replays forces
+from the initial spring state. At any selected frame its position therefore
+matches the pipeline's deterministic precomputed spring position. Rendering
+the same selected frame again does not advance simulation again.
+
+`interactive.py` remains the window, input, and presentation boundary:
+decode, resolve one explicit analysis channel, precompute the existing
+pipeline, initialize the display, ask `playback.py` to initialize audio,
+start playback, read its clock, synchronize the spring, draw, collect scalar
+runtime evidence, and close pygame resources. No FFT runs in the interactive
+loop.
+
+The presentation now exposes only existing state: equilibrium, current
+displacement, a coil, mapped audio-force direction/magnitude, velocity
+direction/magnitude, and a short displacement history. Detailed runtime values
+toggle with D. This helps explain one spring's motion without adding another
+measurement, force, spring, coupling rule, or musical interpretation.
 
 ## Presentation: `render.py` and `demo.py`
 
@@ -123,6 +174,8 @@ Within one numerical environment, the same selected PCM channel, sample rate, se
 - Only one explicitly selected channel and one target frequency are analyzed by the application.
 - Peak normalization depends on the largest measurement in the complete file and is not suitable for live input (which is outside current scope).
 - The spring integrator has no automatic timestep/stiffness stability guard.
-- The renderer is a diagnostic Matplotlib view rather than the eventual interactive visualization.
+- The pygame view is an intentionally primitive runtime substrate, not a decision about the eventual Sound Springs visual language.
+- SDL_mixer reports elapsed playback milliseconds rather than an exact audio-device sample cursor; the first pass has no WAV seek control.
+- Pygame exposes the SDL driver and negotiated format but no underrun counter. Under WSLg, the PulseAudio monitor is upstream of the RDP audio transport, so a clean monitor capture cannot prove that the Windows-side output is clean.
 
 These are current boundaries, not invitations to add streaming, live capture, plugin infrastructure, or a new physical model without human direction.

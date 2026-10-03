@@ -7,3 +7,4 @@ build/
 dist/
 test_audio/
 diagnostics/runs/
+_jorge_temp_dir/

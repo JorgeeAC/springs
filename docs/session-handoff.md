@@ -1,53 +1,50 @@
 # Session Handoff
 
-**Branch:** `agent/maturation-pass-01`
+**Branch:** `feature/interactive-runtime-01`
 
-**Current state:** The working tree contains a coherent, uncommitted scientific/timeline maturation pass plus the reviewed SS-300 decode/precompute diagnostics baseline. Phase 1 validation and the initial Phase 2 timeline are complete. The current scientific, timeline, and diagnostic foundation is sufficiently validated to begin interactive runtime work; the album evidence does not justify memory or streaming redesign. Full tests pass.
+**Current state:** The first interactive runtime now has an explicitly configured playback path and an inspectable single-spring renderer. The original WAV is streamed directly at its source rate/channel count while the separate decoded array is used only for precomputed analysis. Playback time still selects the nearest analysis frame and advances the unchanged one-measurement → one-force → one-spring system. A visible WSLg/PulseAudio run held 62.4 FPS. Captures at the PulseAudio sink monitor were clean; Jorge's speaker-side check remains because that capture point cannot observe the downstream WSLg RDP transport.
 
 **Completed work:**
 
-- Added full-FFT and production-style `rfft` Parseval energy validation, including odd/even frame lengths and explicit one-sided endpoint handling.
-- Added configurable-amplitude sine and silence generators; validated linear spectral-amplitude scaling and quadratic energy scaling at amplitudes 0.25, 0.5, and 1.0.
-- Added DC, Nyquist, multiple-frame-length, complex-input rejection, and peak-normalization regression coverage.
-- Added true PCM-16 WAV and FLAC tone round trips through decoding and spectral analysis.
-- Added immutable `AnalysisTimeline` frame identities: index, start sample, exclusive end sample, and exact center time.
-- Added deterministic nearest-center lookup by playback sample or time, an earlier-frame tie rule, and measurement lookup returning the value plus exact frame identity.
-- Separated frame-center measurement times from post-integration simulation-state times; corrected the spring diagnostic time axis.
-- Made the CLI and diagnostic figure report the exact representative frame. The waveform and spectrum now show the same source frame.
-- Added DiagnosticRun as one centralized scalar record with stable one-row CSV and compact TXT serialization.
-- Added a single-file benchmark command with decode, complete pipeline, DSP, timeline, mapping/simulation, and total-preparation timing.
-- Added Linux process RSS snapshots and process-lifetime peak RSS, exact retained NumPy payload sizes, explicit delta semantics, and release-after-collection observation.
-- Added diagnostics structure/serialization tests, a generated-WAV runner test, and exact pipeline-result equality with instrumentation enabled versus disabled.
-- Copied the Getting Killed WAV album to the Git-ignored test_audio/Geese_Getting_Killed directory at Jorge's request; no audio is tracked by Git.
-- Ran all 11 album WAVs through separate benchmark CLI processes, retained each CSV/TXT pair, and added one album aggregate CSV plus one interpreted TXT summary.
-- Froze artifact handling: routine diagnostics/runs output is Git-ignored, while one compact album aggregate CSV/TXT pair is tracked under diagnostics/baselines.
-- Updated README, architecture, audio model, Parseval notes, validation evidence, and the work board to reflect current behavior.
+- Added pygame-ce as the single lightweight playback/window/drawing dependency.
+- Added `MusicPlayback` with start, pause/resume, elapsed playback position, completion detection, cleanup, and exact audio-output initialization. It performs no DSP and streams the original file.
+- Added validated, configurable power-of-two playback buffering. The default is 4096 samples (92.9 ms at 44.1 kHz), replacing the fragile hard-coded 512-sample request.
+- Added `PlaybackSynchronizedSpring`; it catches up skipped analysis frames, does not reintegrate repeated render frames, and deterministically resets/replays after a backward clock jump.
+- Matured `python -m sound_springs.interactive` without adding a musical mapping: the existing spring now has a coil, marked equilibrium, force/velocity arrows, displacement history, progress display, and a `D`-toggleable diagnostic panel.
+- Kept audio position, frame-center time, fixed simulation timestep, and render timing explicit and separate. No FFT runs in the render loop and no interpolation was added.
+- Extended `DiagnosticRun` with playback backend, negotiated format, buffer size/latency, wall time, playback position, FPS/frame intervals, late frames, selected-frame offset, and process CPU metrics.
+- Added focused playback configuration, synchronization, renderer-geometry, CLI, and diagnostic tests.
+- Updated README, architecture, diagnostics, validation, and the work board with behavior, evidence, limitations, and the pygame-ce rationale.
 
-**Tests:** `.venv/bin/pytest -q` passes 59 tests. `.venv/bin/python -m compileall -q src tests` and `git diff --check` pass.
+**Tests:** `.venv/bin/pytest -q` passes 74 tests. `.venv/bin/python -m compileall -q src tests` and `git diff --check` pass.
 
-**Experiments:** Eleven fresh Python processes analyzed channel 0 of every 44.1 kHz stereo PCM-16 Getting Killed WAV with `N=2048` and `H=512`. Total album duration was 45:42.453. Median/max preparation was 1.468/2.731 s and median/minimum analysis speed was 177.6x/169.9x realtime. The canonical aggregate is tracked under `diagnostics/baselines/`; raw per-track pairs remain local under the ignored `diagnostics/runs/`. Earlier synthetic WAV/FLAC and headless-render experiments remain covered by tests and validation notes.
+**Experiments:** Playback was isolated with DSP, simulation, and rendering disabled, then compared with the full runtime. The source Cobra WAV is 44.1 kHz stereo signed PCM-16 and negotiates unchanged as 44100/-16/2 through pygame. FFplay control, pygame playback-only at 512 and 4096 samples, and full-runtime captures all reached the WSLg `RDPSink.monitor` without sustained zero runs or discontinuities. The revised visible eight-second run prepared 15,945 frames in 1.483 s and rendered at 62.4 FPS: 16.207/16.757 ms median/worst interval, zero intervals over 25 ms, 2.878/23.209 ms mean/max nearest-frame offset, and 6.2% one-core CPU. Evidence is under `_jorge_temp_dir/audio-probe/`; the renderer screenshot is under `_jorge_temp_dir/runtime-second-pass/`.
 
-**Research findings:** Decoded float64 stereo PCM dominated memory and scaled with duration, reaching 268.546 MiB; retained precomputed arrays were only 0.867-1.851 MiB. Median/max live-state RSS increase was 162.367/272.844 MiB and median/max peak was 333.535/566.727 MiB. Three tracks exceeded 400 MiB peak. The peak remains consistent with the decoder array and AudioBuffer's owned copy briefly coexisting, but RSS is not allocation attribution. Post-release RSS was 33.672-45.086 MiB in every independent process. Analysis was consistently far faster than realtime. The album does not justify streaming; it does justify defining a target memory budget.
+**Research findings:** The decoded analysis array is not handed to playback and no runtime processing modifies the heard samples. The clean sink-monitor captures rule out the DSP, simulation, renderer, normalization, clipping, and main-thread contention as the crackle source. Pygame exposes no underrun counter. The strongest practical diagnosis is the downstream WSLg PulseAudio-to-RDP path; this is an inference because the sink monitor is upstream of that boundary. The old 512-sample buffer was nevertheless an avoidable application-side risk, so the default is now 4096. The 23.209 ms maximum lookup offset is the expected first-frame center clamp, not observed drift.
 
-**Known issues:** The whole decoded file and all channels remain as float64 PCM even though only one channel is analyzed. AudioBuffer ownership creates a useful immutable boundary but appears to cause a large transient decode peak. Current/peak RSS are Linux process-level observations affected by imports, allocators, native code, filesystem cache, and system load. Each album track was sampled only once on one machine and all share one encoding. Only one explicit channel and target bin drive one spring. Peak normalization removes absolute loudness differences. The spring integrator has no general stability guard. Nearest-center lookup does not interpolate. Matplotlib remains a diagnostic renderer.
+**Known issues:** A clean `RDPSink.monitor` capture cannot prove that WSLg's later RDP transport and the physical speakers are clean; Jorge must make that acceptance check. The playback clock has millisecond resolution and is not an exact device sample cursor. Pause/resume exists; WAV seek does not. Pygame supplies no backend underrun/callback timing counter. Runtime diagnostics do not include the benchmark runner's RSS snapshots or retained-array sizes. The decoded float64 stereo memory behavior remains unchanged. Only one explicit channel and target bin drive one spring; peak normalization removes absolute loudness differences; the spring has no general stability guard. The renderer is an inspection view, not the eventual visual language.
 
-**Open human decisions:** Choose the intended stereo policy (explicit channel, average mixdown, or independent analysis); choose which time-varying musical measurements should supersede the narrow target-bin example; decide what those measurements should mean physically and visually. No choice was made about frequency grouping, stereo meaning, multiple springs, coupling, phase, or visual geometry.
+**Open human decisions:** Jorge/Jon still own stereo meaning, musical measurements, spring count/coupling, phase/harmonics, and final visual geometry. The current view reveals force, inertia, damping, and return toward equilibrium but does not answer what additional musical quantities should mean physically. Also decide whether WAV seek is required before closing SS-101.
 
-**Incomplete work:** SS-300 remains in progress only for renderer-dependent FPS, worst-frame time, and CPU measurements. The local `test_audio/` album copy and routine `diagnostics/runs/` output are intentionally Git-ignored. `_jorge_temp_dir/` contains pre-existing untracked diagnostic images owned by Jorge and was left untouched.
+**Incomplete work:** SS-100 and SS-105 are complete. SS-101 remains in progress because seek is absent. SS-103 and SS-300 have real visible timing evidence and remain in progress only for Jorge's downstream speaker-side acceptance. Routine output, test audio, captures, and screenshots remain Git-ignored under `_jorge_temp_dir`.
 
-**Recommended next task:** Begin Phase 3 with SS-101's playback clock, then use the SS-100 renderer spike to collect SS-300's remaining FPS/frame-time/CPU evidence. Define a target-platform resident and peak memory budget before considering memory work; do not implement streaming unless a real target or longer-file test shows the current approach fails it.
+**Recommended next task:** Run the revised command below and listen through Jorge's actual speakers. Watch whether the force/velocity arrows explain the bob's motion, toggle diagnostics with `D`, pause/resume once with Space, then exit with Esc. If audio is clean, close SS-103/SS-300. If it still crackles while the saved sink-monitor evidence is clean, investigate/update WSLg's downstream RDP audio path before changing DSP or the Sound Springs model.
 
-**Important files:** `src/sound_springs/diagnostics.py`, `benchmark.py`, `pipeline.py`, `timeline.py`; `tests/test_diagnostics.py`, `test_pipeline.py`; `docs/diagnostics.md`, `docs/validation.md`, `docs/upcoming-work.md`; `diagnostics/baselines/20261002-getting-killed-album-summary.csv` and `.txt`.
+**Important files:** `src/sound_springs/interactive.py`, `playback.py`, `runtime.py`, `diagnostics.py`; `tests/test_interactive.py`, `test_playback.py`, `test_runtime.py`; `docs/architecture.md`, `docs/diagnostics.md`, `docs/validation.md`, `docs/upcoming-work.md`.
 
 **Useful commands:**
 
 ```bash
-.venv/bin/pytest -q
+.venv/bin/python -m sound_springs.interactive \
+  'test_audio/Geese_Getting_Killed/Cobra.wav' \
+  --channel 0 \
+  --audio-buffer-samples 4096 \
+  --output-dir _jorge_temp_dir/interactive-second-pass \
+  --run-id cobra-interactive-second-pass
+
+TMPDIR=$PWD/_jorge_temp_dir/tmp PYGAME_HIDE_SUPPORT_PROMPT=1 \
+  .venv/bin/pytest -q
 .venv/bin/python -m compileall -q src tests
-.venv/bin/python -m sound_springs.benchmark \
-  'test_audio/Geese_Getting_Killed/Getting Killed.wav' --channel 0
-MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-cache \
-  .venv/bin/python -m sound_springs.demo path/to/file.wav --no-show
 git diff --check
 git status --short --branch
 ```

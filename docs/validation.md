@@ -44,6 +44,43 @@ This checks format decoding, explicit channel selection, incremental framing, DS
 
 The current pass repeated that command-line experiment with a one-second PCM-16 WAV. It produced 29 complete frames for `N=1024`, `H=256`; selected representative frame 14 at samples `[3584, 4608)` with center time `0.499939 s`; measured 440.00 Hz as the nearest and strongest bin; and saved a valid headless diagnostic figure. The rendered spectrum title displays the same exact frame identity.
 
+## Interactive runtime validation
+
+Unit tests use a fake music stream to verify play, pause/resume, elapsed
+position, duration clamping, completion, and cleanup without requiring an audio
+device. Audio-output tests verify a positive power-of-two buffer, mono/stereo
+output resolution, an exact source-rate/signed-16/channel request, and captured
+negotiated backend values. Runtime synchronization tests prove that:
+
+- reaching a selected analysis frame applies every precomputed force through
+  that frame exactly once;
+- repeated renders of one selected frame do not integrate again;
+- skipped render frames catch up through every intervening fixed-hop step;
+- a backward clock jump resets and deterministically replays;
+- the resulting position matches the pipeline's precomputed spring position.
+
+A three-second real-file integration smoke then exercised decode, precompute,
+pygame music loading, playback-clock reads, nearest-frame lookup, fixed-step
+spring advancement, drawing, metrics serialization, and shutdown using
+`Cobra.wav`. SDL dummy video/audio drivers made the run automatable and kept
+artifacts in `_jorge_temp_dir`; they cannot validate audible output or real
+display/audio-device scheduling. The measured 62.2 FPS average, 19.286 ms worst
+interval, zero intervals over 25 ms, and 3.8% one-core process CPU are
+provisional renderer evidence rather than a platform guarantee.
+
+The crackling investigation added Pulse sink captures for independent ffplay,
+pygame playback-only, and complete runtimes at 512 and 4,096 samples. The
+captures rule out clipping, >=2 ms zero gaps, recurring low-energy 10 ms
+dropouts, analysis-sample mutation, and DSP/render starvation before the WSLg
+RDP boundary. The revised visible run kept the same deterministic
+synchronization at 62.4 FPS average, 16.757 ms worst interval, zero intervals
+over 25 ms, and 2.878 ms mean nearest-frame offset.
+
+Presentation tests do not assert pixels. They verify the spring polyline keeps
+its exact anchor/bob endpoints and includes alternating coil displacement.
+The runtime state now exposes the existing spring rest position; no physical
+parameter or update equation changed.
+
 ## Runtime diagnostic validation
 
 Focused tests exercise the metrics funnel itself. They verify a stable,
@@ -100,6 +137,11 @@ The implementation choices were checked against primary library documentation:
 - [libsndfile's API notes](https://github.com/libsndfile/libsndfile/blob/master/docs/api.md#note-1) explain that integer PCM read through floating-point functions is normalized to `[-1, 1]`. Sound Springs does not repeat or guess bit-depth scaling downstream.
 - [libsndfile's supported formats](https://libsndfile.github.io/libsndfile/formats.html) includes Microsoft WAV and FLAC. The application intentionally allow-lists only those established project formats even though the decoder library can handle more.
 - [NumPy's DFT documentation](https://numpy.org/doc/stable/reference/routines.fft.html) describes the real-input FFT's non-negative-frequency output and frequency conventions. Sound Springs applies the corresponding one-sided factor while leaving DC and Nyquist undoubled.
+- [pygame-ce music documentation](https://pyga.me/docs/ref/music.html) defines streamed playback and `get_pos()` as elapsed playback milliseconds, notes that it excludes start offsets, and documents format-dependent positioning. The first WAV runtime therefore starts at zero and does not claim seek support.
+- [pygame-ce time documentation](https://pyga.me/docs/ref/time.html) documents `Clock.tick(framerate)` as a low-CPU frame-rate limiter. The runtime measures actual loop-start intervals rather than treating the requested limit as achieved FPS.
+- [pygame-ce mixer documentation](https://pyga.me/docs/ref/mixer.html) states that smaller mixer buffers can cause dropouts and larger buffers improve reliability at the cost of latency. The 4,096-sample default is an explicit reliability choice for the observed WSLg path.
+- [Microsoft's WSLg architecture](https://github.com/microsoft/wslg#pulseaudio) explains that Linux audio passes from PulseAudio through a WSLg sink plugin and the Weston RDP transport to Windows. The clean `RDPSink.monitor` capture therefore rules out upstream sample corruption but not downstream transport underruns.
+- [WSLg issue 1429](https://github.com/microsoft/wslg/issues/1429) independently reports crackling with RDP sink underruns. Applying that report to this machine is an inference supported by the boundary-local capture evidence, not a direct underrun count from pygame.
 
 The coherent-gain correction is verified experimentally rather than accepted from a library default: dividing by the Hann window sum and applying the one-sided factor recovers the known amplitude of bin-centered tones.
 

@@ -56,8 +56,10 @@ The current major project phases are:
 We should resist skipping Phase 1 just because Phase 3 is more fun.
 
 Current milestone state: the scoped Phase 1 contracts and lightweight Phase 2
-timeline are complete. The album benchmark validates the current precompute
-path well enough to begin Phase 3; playback and interactive rendering are next.
+timeline are complete. The first pygame-ce Phase 3 runtime now has explicit
+audio-output configuration, real WSLg timing evidence, and an inspectable
+single-spring presentation. Pulse-sink captures are clean; Jorge's downstream
+speaker check remains before beginning new Sound Springs conceptual experiments.
 
 ---
 
@@ -420,7 +422,7 @@ Priority: P1
 
 Status:
 
-    [ ]
+    [x]
 
 Research and prototype a renderer capable of maintaining:
 
@@ -456,6 +458,15 @@ Deliverable:
 - recommendation
 - documented reasoning
 
+Implemented choice: pygame-ce supplies streamed WAV playback, an elapsed
+playback clock, a lightweight local window, custom drawing, keyboard/window
+events, and a low-CPU frame limiter without a second framework or web stack.
+A visible WSLg/PulseAudio run averaged 62.4 FPS with a 16.757 ms worst interval,
+zero intervals over 25 ms, and 6.2% one-core process CPU. The renderer now makes
+the existing one-spring state inspectable with a coil, equilibrium marker,
+force and velocity arrows, and a short displacement history. The technology
+spike is complete.
+
 ---
 
 ## SS-101 — Audio Playback Clock
@@ -464,7 +475,7 @@ Priority: P1
 
 Status:
 
-    [ ]
+    [~]
 
 Introduce a small playback component capable of:
 
@@ -476,6 +487,16 @@ Introduce a small playback component capable of:
 Playback position should become the synchronization reference for interactive visualization.
 
 Do not perform DSP inside the playback layer.
+
+Implemented so far: `MusicPlayback` supports start, pause/resume, current
+elapsed playback position, completion, and cleanup through pygame-ce. Playback
+also owns exact signed-16-bit device initialization at the source sample rate
+and mono/stereo channel count, with a configurable power-of-two buffer that
+defaults to 4096 samples. Playback position is the interactive synchronization
+reference; the playback module performs no DSP and streams the original WAV,
+not the decoded analysis array. WAV seeking remains deliberately
+unimplemented: SDL_mixer's positioning support is format-dependent and its
+elapsed timer excludes start offsets.
 
 ---
 
@@ -513,7 +534,7 @@ Priority: P1
 
 Status:
 
-    [ ]
+    [~]
 
 Target:
 
@@ -538,6 +559,16 @@ Acceptance criteria:
 - measured stable frame rate
 - no obvious audio playback interruption
 - no FFT calculations unnecessarily repeated per render frame
+
+The implementation reads the audio position, uses deterministic nearest
+lookup, applies each already-mapped force once with the fixed hop timestep, and
+draws one spring at a 60 FPS target. Skipped analysis frames are caught up and
+repeated render frames do not reintegrate. A visible WSLg/PulseAudio run held
+62.4 FPS, with a 16.757 ms worst interval, zero intervals over 25 ms, and
+2.878/23.209 ms mean/maximum nearest-frame offset. Captures from the PulseAudio
+sink monitor contain no application-side dropouts in isolated playback or the
+full runtime. Speaker-side acceptance remains for Jorge because that monitor
+cannot observe the downstream WSLg RDP transport.
 
 ---
 
@@ -572,7 +603,7 @@ Priority: P2
 
 Status:
 
-    [ ]
+    [x]
 
 Optional toggleable diagnostic overlay showing:
 
@@ -587,6 +618,11 @@ Optional toggleable diagnostic overlay showing:
 This is useful while developing visual mappings.
 
 It should be removable/disableable for clean visualization.
+
+Implemented: `D` toggles a compact panel containing playback and analysis
+times, selected-frame offset, amplitude, force, spring position and velocity,
+and the negotiated audio backend/format/buffer. The main view retains only the
+small status readout needed to interpret the experiment.
 
 ---
 
@@ -716,11 +752,14 @@ an 11-track, 45:42 album baseline, with each track run in a fresh process.
 Analysis was 169.9x-183.3x realtime. Median/max live-state RSS increase was
 162.367/272.844 MiB; median/max process peak was 333.535/566.727 MiB; retained
 precomputed arrays never exceeded 1.851 MiB. All tracks completed and
-post-release RSS was 33.672-45.086 MiB. Render FPS, worst-frame time, and CPU
-usage remain open, so SS-300 is intentionally still in progress. See
-docs/diagnostics.md. Those renderer-dependent measurements should be collected
-with the Phase 3 renderer spike; they do not block starting interactive runtime
-work. Current evidence does not justify streaming or another memory redesign.
+post-release RSS was 33.672-45.086 MiB. A visible eight-second WSLg/PulseAudio
+run over the real Cobra WAV added runtime evidence: 62.4 FPS average, 16.757 ms
+worst interval, zero intervals over 25 ms, and 6.2% one-core process CPU.
+Playback-only and full-runtime captures at the PulseAudio sink monitor showed
+no application-side dropouts. SS-300 remains in progress only for Jorge's
+speaker-side acceptance because the downstream WSLg RDP audio transport is not
+visible to pygame or the sink monitor. See docs/diagnostics.md. Current evidence
+does not justify streaming or another memory redesign.
 
 ---
 
@@ -804,15 +843,13 @@ Do not migrate merely because formal issue tracking looks more professional.
 
 The current recommended sequence is:
 
-    SS-101 Playback clock
+    Run the revised first pass through Jorge's speakers
         ↓
-    SS-100 Renderer spike
+    if crackling remains, treat the downstream WSLg/RDP audio path first
         ↓
-    SS-300 Finish renderer FPS / frame-time / CPU baseline
+    decide whether WAV seek is required before closing SS-101
         ↓
-    SS-103 60 FPS loop
-        ↓
-    begin real Sound Springs visual experiments
+    Jorge/Jon choose the next Sound Springs visual or physical experiment
 
 This order is intentionally:
 

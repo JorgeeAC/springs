@@ -2,7 +2,7 @@
 
 Sound Springs has one deliberately small metrics funnel:
 
-    benchmark runner and instrumented pipeline phases
+    benchmark or interactive runner and instrumented pipeline phases
         → DiagnosticRun scalar record
         → one CSV row + one TXT summary
 
@@ -12,9 +12,13 @@ files. run_pipeline accepts an optional record only to bracket its existing
 timeline, DSP, and mapping/simulation phases. Tests verify that enabling these
 timers leaves every deterministic result array unchanged.
 
-Run one file with:
+Run one preparation benchmark with:
 
     python -m sound_springs.benchmark path/to/song.wav --channel 0
+
+Run the interactive application and retain its scalar runtime evidence with:
+
+    python -m sound_springs.interactive path/to/song.wav --channel 0
 
 Mono files do not need --channel. The defaults remain a 2,048-sample frame,
 512-sample hop, and 440 Hz target. Output is written to
@@ -58,6 +62,23 @@ The CSV is canonical and contains one row. Its stable column order is:
     timeline_array_mib
     precomputed_state_bytes
     precomputed_state_mib
+    interactive_runtime_s
+    playback_position_end_s
+    target_render_fps
+    render_frame_count
+    render_fps_average
+    render_frame_ms_median
+    render_frame_ms_worst
+    late_frame_count
+    analysis_frame_offset_ms_mean_abs
+    analysis_frame_offset_ms_max_abs
+    runtime_cpu_percent
+    audio_driver
+    audio_buffer_samples
+    audio_buffer_ms
+    mixer_frequency_hz
+    mixer_sample_size_bits
+    mixer_channel_count
     memory_before_load_rss_mib
     memory_after_decode_rss_mib
     memory_after_analysis_rss_mib
@@ -80,6 +101,20 @@ timer overhead make the complete time slightly larger than their sum.
 total_prepare_s covers decode, channel selection, the pipeline call, and the two
 surrounding memory snapshots. Realtime factor is audio duration divided by
 analysis_s.
+
+Interactive fields are optional for benchmark-only rows. Runtime wall time
+starts immediately before playback and ends after the loop exits. Average FPS
+is rendered frames divided by that wall time. Median and worst frame durations
+use consecutive loop-start intervals and therefore include the 60 FPS limiter.
+A frame is "late" when that interval exceeds 1.5 times the target period (25 ms
+at 60 FPS), which avoids counting normal scheduler jitter at exactly 16.67 ms.
+Analysis-frame offset is the absolute difference between playback position and
+the selected frame center; nearest-frame quantization normally bounds it to
+half a hop except at the source edges. CPU percentage is process CPU time
+divided by runtime wall time and is expressed as one-core utilization.
+The audio fields record SDL's selected driver, the requested buffer in samples
+and milliseconds, and pygame's negotiated mixer rate/signed sample size/channel
+count. Pygame/SDL_mixer does not expose an underrun counter.
 
 The exact NumPy payload sizes are reported separately:
 
@@ -112,6 +147,76 @@ operating system may keep released pages resident.
 
 Platforms without /proc/self/status leave these optional process-memory fields
 empty rather than substituting a metric with different semantics.
+
+## Playback-quality investigation
+
+The reported crackling was isolated from analysis and rendering before any
+parameter change. All tests used the same unmodified `Cobra.wav`: 44.1 kHz,
+stereo, signed PCM-16. The file peaks at 0.986/0.984 by channel, contains no
+clipped or >=0.99 full-scale samples, and is streamed from its path by
+SDL_mixer. Sound Springs' separately decoded float64 analysis array is
+read-only and never enters the playback output.
+
+Controlled audible paths were:
+
+1. independent ffplay through WSLg PulseAudio;
+2. pygame music playback with DSP, simulation, and display disabled;
+3. the complete Sound Springs runtime;
+4. pygame/full runtime at 512- and 4,096-sample mixer buffers.
+
+SDL selected `pulseaudio` and negotiated exactly 44.1 kHz, signed 16-bit,
+stereo. Each path was also captured from WSLg's `RDPSink.monitor`. The ffplay,
+playback-only, original full-runtime, and revised full-runtime captures had
+comparable RMS and sample-difference distributions. None clipped, contained a
+zero run of 2 ms or longer, or showed low-energy 10 ms blocks beyond the same
+three passages in the source. The original full runtime held 62.0 FPS with a
+16.986 ms worst interval and no interval over 25 ms, ruling out main-thread
+DSP/render starvation.
+
+This evidence rules out Sound Springs DSP, simulation, rendering, sample
+normalization, and accidental sample mutation. The monitor is upstream of
+WSLg's PulseAudio-to-RDP transport, so it cannot observe a downstream RDP sink
+underrun. The machine runs WSLg 1.0.66, and WSLg has independently reported RDP
+sink crackling/underrun problems. The actual audible fault is therefore most
+consistent with that output boundary, not the analyzed samples.
+
+The application still had one concrete weakness: it hard-coded SDL's smallest
+default 512-sample buffer (11.6 ms), even though pygame documents that smaller
+buffers can drop out and larger buffers trade latency for reliability. Playback
+configuration now belongs to `playback.py`, requests the exact source
+rate/signed-16/channel format, uses a configurable 4,096-sample default (92.9 ms
+at 44.1 kHz), and records the backend/format/buffer. This removes an
+application-side underrun risk without introducing a new audio architecture.
+It cannot repair or measure a downstream WSLg RDP transport fault; audible
+acceptance still has to be checked at the speakers.
+
+## First interactive runtime smoke
+
+A three-second integration smoke used the real 44.1 kHz stereo PCM-16
+`Cobra.wav` from the ignored `test_audio/Geese_Getting_Killed` copy, channel
+0, the default 2,048-sample frame / 512-sample hop / 440 Hz target, and
+pygame-ce with SDL dummy video and audio drivers. Artifacts stayed under
+`_jorge_temp_dir/interactive-smoke`.
+
+- 15,945 analysis frames were prepared in 1.239 s;
+- 189 frames rendered in 3.040 s, or 62.2 FPS average;
+- median / worst loop interval was 15.675 / 19.286 ms;
+- zero intervals exceeded the 25 ms late threshold;
+- mean / maximum absolute nearest-frame offset was 3.036 / 23.209 ms;
+- process CPU was 3.8%.
+
+The maximum offset is the expected first-frame source-edge clamp:
+`(2048 - 1) / 2 / 44100 = 23.209 ms`. This run validates the complete code
+path and scalar instrumentation, but dummy audio is not audible and a dummy
+display does not measure real compositor or audio-device behavior.
+
+The revised visible/PulseAudio run used the 4,096-sample buffer for 8.012 s:
+62.4 FPS average, 16.207/16.757 ms median/worst interval, zero intervals above
+25 ms, 2.878/23.209 ms mean/max absolute analysis-frame offset, and 6.2%
+one-core CPU. The negotiated format was exactly 44.1 kHz, signed 16-bit,
+stereo. Its sink capture contained no >=2 ms zero runs or low-energy dropout
+blocks. These are application and Pulse-server facts; speaker-side WSLg/RDP
+quality remains a human acceptance check.
 
 ## First real-WAV baseline
 
